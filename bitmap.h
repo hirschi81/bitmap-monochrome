@@ -3,6 +3,7 @@
  *
  * @author Kevin Buffardi
  * @author Joshua Petrin
+ * @author Jan Hirsch
  */
 
 #ifndef BITMAP_H_
@@ -49,10 +50,11 @@ class Bitmap
   public:
     /**
      * @brief Opens a file as its name is provided and reads pixel-by-pixel 
-     * the data into a matrix of on/off pixels. Any errors will cout but will 
-     * result in an empty matrix (with no rows and no columns).
+     * the data into a matrix of on/off pixels. Any errors will cout.
      *
      * @param file  name of the filename to be opened and read as a matrix of pixels
+	 *
+	 * @return: Result information: 0 for success, negative value for opening error.
     **/
 	  signed char open(std::string file);
 
@@ -64,6 +66,8 @@ class Bitmap
      * and will NOT attempt to save the file.
      *
      * @param file  name of the filename to be written as a bmp image
+	 *
+	 * @return: Result information: 0 for success, negative value for opening error.
     **/
 	  signed char save(std::string file) const;
 
@@ -81,7 +85,7 @@ class Bitmap
     /**
      * @brief Provides a vector of vector of pixels representing the bitmap
      *
-     * @return the bitmap image, represented by a matrix of RGB pixels
+     * @return the bitmap image, represented by a matrix of pixels
     **/
     PixelMatrix toPixelMatrix() const;
 
