@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cmath>
+#include "bitmap.h"
 
 typedef unsigned char uchar_t;  ///< Ensure only positive parsing
 
@@ -83,14 +84,14 @@ struct bmpfile_color_table
 };
 
 
-void Bitmap::open(std::string filename)
+signed char Bitmap::open(std::string filename)
 {
     std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
     
     if (file.fail())
     {
-        std::cout << filename << " could not be opened. Does it exist? "
-                  << "Is it already open by another program?\n";
+		return -1;
+		std::cout << filename << " could not be opened. Does it exist? " << "Is it already open by another program?\n";
         //pixels.resize(0); //make empty if it isn't already
     }
     else
@@ -102,8 +103,9 @@ void Bitmap::open(std::string filename)
         // identifier that identifies a bitmap image.
         if (magic.magic[0] != 'B' || magic.magic[1] != 'M')
         {
-            std::cout << filename << " is not in proper BMP format; it does "
-                                  << "not begin with the magic bytes!\n";
+            std::cout << filename << " is not in proper BMP format; it does " << "not begin with the magic bytes!\n";
+			file.close();
+			return -2;
         }
         else
         {
@@ -125,32 +127,29 @@ void Bitmap::open(std::string filename)
             // Only support for 1-bit images
             if (dib_info.bits_per_pixel != 1)
             {
-                std::cout << filename << " uses " << dib_info.bits_per_pixel
-                          << " bits per pixel (bit depth). This implementation"
-                          << " of Bitmap only supports 1-bit (monochrome)."
-                          << std::endl;
+                std::cout << filename << " uses " << dib_info.bits_per_pixel << " bits per pixel (bit depth). This implementation" << " of Bitmap only supports 1-bit (monochrome)." << std::endl;
+				file.close();
+				return -3;
             }
             // No support for compressed images
             else if (dib_info.compression != 0)
             {
-                std::cout << filename << " is compressed. "
-                          << "Bitmap only supports uncompressed images."
-                          << std::endl;
+                std::cout << filename << " is compressed. " << "Bitmap only supports uncompressed images." << std::endl;
+				file.close();
+				return -4;
             }
             // Check for the reserved bits in the color palette
             else if (color1.reserved != 0)
             {
-                std::cout << filename << " does not have a good color palette"
-                          << " for monochrome display;"
-                          << " its first reserved bits are not 0."
-                          << std::endl;
+                std::cout << filename << " does not have a good color palette" << " for monochrome display;" << " its first reserved bits are not 0." << std::endl;
+				file.close();
+				return -5;
             }
             else if (color2.reserved != 0)
             {
-                std::cout << filename << " does not have a good color palette"
-                          << " for monochrome display;"
-                          << " its second reserved bits are not 0."
-                          << std::endl;
+                std::cout << filename << " does not have a good color palette" << " for monochrome display;" << " its second reserved bits are not 0." << std::endl;
+				file.close();
+				return -6;
             }
             else  // All clear! Bitmap is (probably) in proper format.
             {
@@ -221,8 +220,8 @@ void Bitmap::open(std::string filename)
                         pixels.push_back(row_pixels);
                 }
             }
-
             file.close();
+			return 0;
         }//end else (is an image)
     }//end else (can open file)
 }

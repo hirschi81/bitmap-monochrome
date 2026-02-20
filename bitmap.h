@@ -54,7 +54,7 @@ class Bitmap
      *
      * @param file  name of the filename to be opened and read as a matrix of pixels
     **/
-    void open(std::string file);
+	  signed char open(std::string file);
 
     /**
      * @brief Saves the current image, represented by the matrix of pixels, as 
@@ -96,7 +96,5 @@ class Bitmap
     void fromPixelMatrix(const PixelMatrix &m);
     
 };
-
-#include "bitmap.cpp"
 
 #endif
