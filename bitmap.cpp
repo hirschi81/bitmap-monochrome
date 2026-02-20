@@ -3,6 +3,7 @@
  *
  * @author Kevin Buffardi, Ph.D
  * @author Joshua Petrin
+ * @author Jan Hirsch, M. Sc.
  */
 
 #ifndef BITMAP_CPP_
@@ -90,8 +91,9 @@ signed char Bitmap::open(std::string filename)
     
     if (file.fail())
     {
-		return -1;
+		
 		std::cout << filename << " could not be opened. Does it exist? " << "Is it already open by another program?\n";
+		return -1;
         //pixels.resize(0); //make empty if it isn't already
     }
     else
@@ -227,7 +229,7 @@ signed char Bitmap::open(std::string filename)
 }
 
 
-void Bitmap::save(std::string filename) const
+signed char Bitmap::save(std::string filename) const
 {
     std::ofstream file(filename.c_str(), std::ios::out | std::ios::binary);
 
@@ -237,12 +239,13 @@ void Bitmap::save(std::string filename) const
                   << "Is it already open by another program, "
                   << "or is it read-only?"
                   << std::endl;
-        return;
+        return -1;
     }
     else if(!isImage())
     {
         std::cout << "Bitmap cannot be saved. It is not a valid image."
                   << std::endl;
+		return -2;
     }
     else
     {
@@ -260,13 +263,13 @@ void Bitmap::save(std::string filename) const
         int bytes_per_row = 0;
         for (int i = 0; i < pixels[0].size(); i += 32)
             bytes_per_row += 4;
-        header.file_size = header.bmp_offset + bytes_per_row * pixels.size();
+        header.file_size = header.bmp_offset + bytes_per_row * static_cast<uint32_t>(pixels.size());
 
         file.write((char*)(&header), sizeof(header));
         bmpfile_dib_info dib_info = { 0 };
         dib_info.header_size = sizeof(bmpfile_dib_info);
-        dib_info.width = pixels[0].size();
-        dib_info.height = pixels.size();
+        dib_info.width = static_cast<uint32_t>(pixels[0].size());
+        dib_info.height = static_cast<uint32_t>(pixels.size());
         dib_info.num_planes = 1;
         dib_info.bits_per_pixel = 1;  // monochrome
         dib_info.compression = 0;
@@ -296,7 +299,7 @@ void Bitmap::save(std::string filename) const
 
         // Write each row and column of Pixels into the image file -- we write
         // the rows upside-down to satisfy the easiest BMP format.
-        for (int row = pixels.size() - 1; row >= 0; --row)
+        for (size_t row = pixels.size() - 1; row >= 0; --row)
         {
             const std::vector<Pixel>& row_data = pixels[row];
 
@@ -339,21 +342,21 @@ void Bitmap::save(std::string filename) const
             }
         }
     }
-
     file.close();
+	return 0;
 }
     
 
 bool Bitmap::isImage() const
 {
-    const int height = pixels.size();
+    const size_t height = pixels.size();
 
     if (height == 0 || pixels[0].size() == 0)
     {
         return false;
     }
 
-    const int width = pixels[0].size();
+    const size_t width = pixels[0].size();
 
     for (int row = 0; row < height; row++)
     {
@@ -381,6 +384,5 @@ void Bitmap::fromPixelMatrix(const PixelMatrix & values)
 {
     pixels = values;
 }
-
 
 #endif //BITMAP_CPP_

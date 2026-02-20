@@ -39,7 +39,7 @@ typedef std::vector < std::vector <Pixel> > PixelMatrix;
  * @brief Represents a bitmap where a grid of pixels (in row-major order)
  * describes the color of each pixel within the image. 
  * Functionality limited to Windows BMP formatted images with no compression 
- * and 24 bit color depth.
+ * and 1 bit color depth.
 **/
 class Bitmap
 {
@@ -65,7 +65,7 @@ class Bitmap
      *
      * @param file  name of the filename to be written as a bmp image
     **/
-    void save(std::string file) const;
+	  signed char save(std::string file) const;
 
     /**
       * @brief Validates whether or not the current matrix of pixels represents a
