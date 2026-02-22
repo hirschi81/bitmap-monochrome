@@ -155,7 +155,7 @@ signed char Bitmap::open(std::string filename)
             else  // All clear! Bitmap is (probably) in proper format.
             {
                 // clear the Pixel vector if already holds information
-                for(int i = 0; i < pixels.size(); ++i)
+                for(size_t i = 0; i < pixels.size(); ++i)
                 {
                     pixels[i].clear();
                 }
@@ -175,7 +175,7 @@ signed char Bitmap::open(std::string filename)
 
 
                 // The number of bytes in a row of pixels
-                int row_bytes = 0;
+                size_t row_bytes = 0;
                 // All but the last byte
                 row_bytes += dib_info.width / 8;
                 // Is there a last byte?
@@ -192,7 +192,7 @@ signed char Bitmap::open(std::string filename)
                     std::vector<Pixel> row_pixels;
                     bool high;
 
-                    file.read(row_data.get(), row_bytes);
+                    file.read(row_data.get(), static_cast<uint32_t>(row_bytes));
 
                     // In a monochrome image, each bit is a pixel.
                     // First we cover all bits except the ones in the last byte.
@@ -260,15 +260,15 @@ signed char Bitmap::save(std::string filename) const
         
         // TODO: vv These lines are lazy and bad. 
         int bytes_per_row = 0;
-        for (int i = 0; i < pixels[0].size(); i += 32)
+        for (size_t i = 0; i < pixels[0].size(); i += 32)
             bytes_per_row += 4;
         header.file_size = header.bmp_offset + bytes_per_row * static_cast<uint32_t>(pixels.size());
 
         file.write((char*)(&header), sizeof(header));
         bmpfile_dib_info dib_info = { 0 };
         dib_info.header_size = sizeof(bmpfile_dib_info);
-        dib_info.width = static_cast<uint32_t>(pixels[0].size());
-        dib_info.height = static_cast<uint32_t>(pixels.size());
+        dib_info.width = static_cast<int32_t>(pixels[0].size());
+        dib_info.height = static_cast<int32_t>(pixels.size());
         dib_info.num_planes = 1;
         dib_info.bits_per_pixel = 1;  // monochrome
         dib_info.compression = 0;
@@ -298,7 +298,7 @@ signed char Bitmap::save(std::string filename) const
 
         // Write each row and column of Pixels into the image file -- we write
         // the rows upside-down to satisfy the easiest BMP format.
-        for (size_t row = pixels.size() - 1; row >= 0; --row)
+        for (int32_t row = static_cast<int32_t>(pixels.size()) - 1; row >= 0; --row)
         {
             const std::vector<Pixel>& row_data = pixels[row];
 
@@ -306,13 +306,9 @@ signed char Bitmap::save(std::string filename) const
             int bit = 7;
             char next_byte = '\0';
 
-            for (int col = 0; col < row_data.size(); col++)
+            for (size_t col = 0; col < row_data.size(); col++)
             {
-                next_byte += (row_data[col].on)? (1 << bit) : 0;
-
-                // file.put((uchar_t)(pix.blue));
-                // file.put((uchar_t)(pix.green));
-                // file.put((uchar_t)(pix.red));
+                next_byte += (row_data[col].on)? (1 << bit) : 0;                
 
                 if (bit > 0)
                 {
@@ -357,7 +353,7 @@ bool Bitmap::isImage() const
 
     const size_t width = pixels[0].size();
 
-    for (int row = 0; row < height; row++)
+    for (size_t row = 0; row < height; row++)
     {
         if (pixels[row].size() != width)
             return false;
