@@ -9,6 +9,7 @@
 #ifndef BITMAP_CPP_
 #define BITMAP_CPP_
 
+#include <algorithm>
 #include <memory>
 #include <iostream>
 #include <fstream>
@@ -154,15 +155,11 @@ signed char Bitmap::open(std::string filename)
             }
             else  // All clear! Bitmap is (probably) in proper format.
             {
-                // clear the Pixel vector if already holds information
-                for(size_t i = 0; i < pixels.size(); ++i)
-                {
-                    pixels[i].clear();
-                }
+                // Clear the pixel vector if it already holds information.
                 pixels.clear();
 
-                // Check for this here and so that we know later whether we 
-                // need to insert each row at the bottom or top of the image.
+                // A negative height means the rows are stored top-to-bottom
+                // in the file. We track this and reverse after loading if needed.
                 bool flip = true;
                 if (dib_info.height < 0)
                 {
@@ -186,10 +183,14 @@ signed char Bitmap::open(std::string filename)
 
                 std::unique_ptr<char[]> row_data(new char[row_bytes]);
 
-                // Transcribe Pixels from the image.
+                // Transcribe pixels from the image. Pre-allocate to avoid
+                // repeated reallocations as rows are added.
+                pixels.reserve(dib_info.height);
+
                 for (int row = 0; row < dib_info.height; ++row)
                 {
                     std::vector<Pixel> row_pixels;
+                    row_pixels.reserve(dib_info.width);
                     bool high;
 
                     file.read(row_data.get(), static_cast<uint32_t>(row_bytes));
@@ -215,11 +216,13 @@ signed char Bitmap::open(std::string filename)
                         row_pixels.push_back(Pixel(high));
                     }
 
-                    if (flip)
-                        pixels.insert(pixels.begin(), row_pixels);
-                    else
-                        pixels.push_back(row_pixels);
+                    pixels.push_back(row_pixels);
                 }
+
+                // BMP rows are stored bottom-to-top by default. Reverse once
+                // after loading rather than inserting at the front each iteration.
+                if (flip)
+                    std::reverse(pixels.begin(), pixels.end());
             }
             file.close();
 			return 0;
@@ -244,7 +247,6 @@ signed char Bitmap::save(std::string filename) const
     {
         std::cout << "Bitmap cannot be saved. It is not a valid image."
                   << std::endl;
-        remove(filename.c_str());
 		return -2;
     }
     else
@@ -259,10 +261,9 @@ signed char Bitmap::save(std::string filename) const
         header.bmp_offset = sizeof(bmpfile_magic) + sizeof(bmpfile_header)
                 + sizeof(bmpfile_dib_info) + 2*sizeof(bmpfile_color_table);
         
-        // TODO: vv These lines are lazy and bad. 
-        int bytes_per_row = 0;
-        for (size_t i = 0; i < pixels[0].size(); i += 32)
-            bytes_per_row += 4;
+        // Round pixel columns up to the nearest 32-bit (4-byte) boundary,
+        // as required by the BMP format.
+        int bytes_per_row = static_cast<int>(((pixels[0].size() + 31) / 32) * 4);
         header.file_size = header.bmp_offset + bytes_per_row * static_cast<uint32_t>(pixels.size());
 
         file.write((char*)(&header), sizeof(header));
@@ -297,19 +298,24 @@ signed char Bitmap::save(std::string filename) const
         file.write((char*)(&on_color), sizeof(on_color));
 
 
-        // Write each row and column of Pixels into the image file -- we write
-        // the rows upside-down to satisfy the easiest BMP format.
+        // Write pixel rows bottom-to-top, as required by BMP format.
+        // A single reusable buffer covers the full padded row width; it is
+        // zeroed before each row so padding bytes are always 0.
+        std::vector<char> row_buf(bytes_per_row, '\0');
+
         for (int32_t row = static_cast<int32_t>(pixels.size()) - 1; row >= 0; --row)
         {
             const std::vector<Pixel>& row_data = pixels[row];
 
+            std::fill(row_buf.begin(), row_buf.end(), '\0');
+
             int bytes_written = 0;
             int bit = 7;
-            char next_byte = '\0';
 
             for (size_t col = 0; col < row_data.size(); col++)
             {
-                next_byte += (row_data[col].on)? (1 << bit) : 0;                
+                if (row_data[col].on)
+                    row_buf[bytes_written] |= static_cast<char>(1 << bit);
 
                 if (bit > 0)
                 {
@@ -317,25 +323,16 @@ signed char Bitmap::save(std::string filename) const
                 }
                 else
                 {
-                    file.put(next_byte);
                     ++bytes_written;
                     bit = 7;
-                    next_byte = '\0';
                 }
             }
 
             if (row_data.size() % 8 != 0)
-            {
-                file.put(next_byte);
                 ++bytes_written;
-            }
 
-            // Rows are padded so that they're always a multiple of 4
-            // bytes. This line skips the padding at the end of each row.
-            for (int i = 0; i < 4 - bytes_written % 4; i++)
-            {
-                file.put(0);
-            }
+            // Write the entire row (including padding) in one call.
+            file.write(row_buf.data(), bytes_per_row);
         }
     }
     file.close();
