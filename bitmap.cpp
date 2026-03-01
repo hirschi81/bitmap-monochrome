@@ -244,6 +244,7 @@ signed char Bitmap::save(std::string filename) const
     {
         std::cout << "Bitmap cannot be saved. It is not a valid image."
                   << std::endl;
+        remove(filename.c_str());
 		return -2;
     }
     else
