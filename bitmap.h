@@ -9,6 +9,7 @@
 #ifndef BITMAP_H_
 #define BITMAP_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -45,7 +46,9 @@ typedef std::vector < std::vector <Pixel> > PixelMatrix;
 class Bitmap
 {
   private:
-    PixelMatrix pixels;
+    std::vector<uint8_t> bitdata_;  ///< Packed bits, row-major, each row padded to 4 bytes.
+    uint32_t width_ = 0;             ///< Image width in pixels.
+    uint32_t height_ = 0;            ///< Image height in pixels.
 
   public:
     /**
@@ -56,7 +59,7 @@ class Bitmap
 	 *
 	 * @return: Result information: 0 for success, negative value for opening error.
     **/
-	  signed char open(std::string file);
+	  signed char open(const std::string& file);
 
     /**
      * @brief Saves the current image, represented by the matrix of pixels, as 
@@ -69,7 +72,7 @@ class Bitmap
 	 *
 	 * @return: Result information: 0 for success, negative value for opening error.
     **/
-	  signed char save(std::string file) const;
+	  signed char save(const std::string& file) const;
 
     /**
       * @brief Validates whether or not the current matrix of pixels represents a

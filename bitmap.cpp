@@ -10,7 +10,6 @@
 #define BITMAP_CPP_
 
 #include <algorithm>
-#include <memory>
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
@@ -86,14 +85,15 @@ struct bmpfile_color_table
 };
 
 
-signed char Bitmap::open(std::string filename)
+signed char Bitmap::open(const std::string& filename)
 {
     std::ifstream file(filename.c_str(), std::ios::in | std::ios::binary);
     
     if (file.fail())
     {
 		
-		std::cout << filename << " could not be opened. Does it exist? " << "Is it already open by another program?\n";		
+		std::cout << filename << " could not be opened. Does it exist? " << "Is it already open by another program?\n";
+        //std::remove(filename.c_str());
 		return -1;        
     }
     else
@@ -154,10 +154,7 @@ signed char Bitmap::open(std::string filename)
 				return -6;
             }
             else  // All clear! Bitmap is (probably) in proper format.
-            {
-                // Clear the pixel vector if it already holds information.
-                pixels.clear();
-
+            {		        
                 // A negative height means the rows are stored top-to-bottom
                 // in the file. We track this and reverse after loading if needed.
                 bool flip = true;
@@ -170,59 +167,31 @@ signed char Bitmap::open(std::string filename)
                 // Move to the data
                 file.seekg(header.bmp_offset);
 
+                // Bytes per row, padded to 4-byte boundary (BMP requirement).
+                size_t stride = static_cast<size_t>(((dib_info.width + 31) / 32) * 4);
+                size_t total_bytes = stride * dib_info.height;
 
-                // The number of bytes in a row of pixels
-                size_t row_bytes = 0;
-                // All but the last byte
-                row_bytes += dib_info.width / 8;
-                // Is there a last byte?
-                row_bytes += (dib_info.width % 8 != 0)? 1 : 0;
-                // Rows are padded so that they're always a multiple of 4 bytes
-                row_bytes += (row_bytes % 4 == 0)? 0 : (4 - row_bytes%4);
-                
+                // Read the entire pixel data block directly into bitdata_.
+                bitdata_.resize(total_bytes);
+                file.read(reinterpret_cast<char*>(bitdata_.data()),
+                          static_cast<std::streamsize>(total_bytes));
+                width_ = static_cast<uint32_t>(dib_info.width);
+                height_ = static_cast<uint32_t>(dib_info.height);
 
-                std::unique_ptr<char[]> row_data(new char[row_bytes]);
-
-                // Transcribe pixels from the image. Pre-allocate to avoid
-                // repeated reallocations as rows are added.
-                pixels.reserve(dib_info.height);
-
-                for (int row = 0; row < dib_info.height; ++row)
-                {
-                    std::vector<Pixel> row_pixels;
-                    row_pixels.reserve(dib_info.width);
-                    bool high;
-
-                    file.read(row_data.get(), static_cast<uint32_t>(row_bytes));
-
-                    // In a monochrome image, each bit is a pixel.
-                    // First we cover all bits except the ones in the last byte.
-                    for (int col = 0; col < dib_info.width / 8; ++col)
-                    {
-                        for (int bit = 7; bit >= 0; --bit)
-                        {
-                            high = ((row_data.get()[col] & (1 << bit)) != 0);
-                            row_pixels.push_back(Pixel(high));
-                        }
-                    }
-
-                    // Then we cover the bits we missed at the end.
-                    for (int rev_bit = 0; 
-                        rev_bit < dib_info.width % 8; 
-                        ++rev_bit)
-                    {
-                        high = (row_data.get()[dib_info.width/8] 
-                            & (1 << (7 - rev_bit))) != 0;
-                        row_pixels.push_back(Pixel(high));
-                    }
-
-                    pixels.push_back(row_pixels);
-                }
-
-                // BMP rows are stored bottom-to-top by default. Reverse once
-                // after loading rather than inserting at the front each iteration.
+                // BMP rows are stored bottom-to-top by default.
+                // Reverse row order in-place so bitdata_ is top-to-bottom.
                 if (flip)
-                    std::reverse(pixels.begin(), pixels.end());
+                {
+                    std::vector<uint8_t> tmp(stride);
+                    for (uint32_t lo = 0, hi = height_ - 1; lo < hi; ++lo, --hi)
+                    {
+                        uint8_t* lo_ptr = bitdata_.data() + lo * stride;
+                        uint8_t* hi_ptr = bitdata_.data() + hi * stride;
+                        std::copy(lo_ptr, lo_ptr + stride, tmp.data());
+                        std::copy(hi_ptr, hi_ptr + stride, lo_ptr);
+                        std::copy(tmp.data(), tmp.data() + stride, hi_ptr);
+                    }
+                }
             }
             file.close();
 			return 0;
@@ -231,7 +200,7 @@ signed char Bitmap::open(std::string filename)
 }
 
 
-signed char Bitmap::save(std::string filename) const
+signed char Bitmap::save(const std::string& filename) const
 {
     std::ofstream file(filename.c_str(), std::ios::out | std::ios::binary);
 
@@ -257,20 +226,19 @@ signed char Bitmap::save(std::string filename) const
         magic.magic[1] = 'M';
         file.write((char*)(&magic), sizeof(magic));
 
+        size_t stride = static_cast<size_t>(((width_ + 31) / 32) * 4);
+
         bmpfile_header header = { 0 };
         header.bmp_offset = sizeof(bmpfile_magic) + sizeof(bmpfile_header)
                 + sizeof(bmpfile_dib_info) + 2*sizeof(bmpfile_color_table);
-        
-        // Round pixel columns up to the nearest 32-bit (4-byte) boundary,
-        // as required by the BMP format.
-        int bytes_per_row = static_cast<int>(((pixels[0].size() + 31) / 32) * 4);
-        header.file_size = header.bmp_offset + bytes_per_row * static_cast<uint32_t>(pixels.size());
+        header.file_size = header.bmp_offset
+                + static_cast<uint32_t>(stride) * static_cast<uint32_t>(height_);
 
         file.write((char*)(&header), sizeof(header));
         bmpfile_dib_info dib_info = { 0 };
         dib_info.header_size = sizeof(bmpfile_dib_info);
-        dib_info.width = static_cast<int32_t>(pixels[0].size());
-        dib_info.height = static_cast<int32_t>(pixels.size());
+        dib_info.width = static_cast<int32_t>(width_);
+        dib_info.height = static_cast<int32_t>(height_);
         dib_info.num_planes = 1;
         dib_info.bits_per_pixel = 1;  // monochrome
         dib_info.compression = 0;
@@ -281,7 +249,7 @@ signed char Bitmap::save(std::string filename) const
         dib_info.num_important_colors = 0;
         file.write((char*)(&dib_info), sizeof(dib_info));
 
-        // Color palettes. 
+        // Color palettes.
         // First is the '0' color...
         bmpfile_color_table off_color;
         off_color.red = MONO_R_VAL_OFF;
@@ -297,42 +265,12 @@ signed char Bitmap::save(std::string filename) const
         on_color.reserved = 0;
         file.write((char*)(&on_color), sizeof(on_color));
 
-
         // Write pixel rows bottom-to-top, as required by BMP format.
-        // A single reusable buffer covers the full padded row width; it is
-        // zeroed before each row so padding bytes are always 0.
-        std::vector<char> row_buf(bytes_per_row, '\0');
-
-        for (int32_t row = static_cast<int32_t>(pixels.size()) - 1; row >= 0; --row)
+        // bitdata_ is stored top-to-bottom, so iterate in reverse.
+        for (int32_t row = height_ - 1; row >= 0; --row)
         {
-            const std::vector<Pixel>& row_data = pixels[row];
-
-            std::fill(row_buf.begin(), row_buf.end(), '\0');
-
-            int bytes_written = 0;
-            int bit = 7;
-
-            for (size_t col = 0; col < row_data.size(); col++)
-            {
-                if (row_data[col].on)
-                    row_buf[bytes_written] |= static_cast<char>(1 << bit);
-
-                if (bit > 0)
-                {
-                    --bit;
-                }
-                else
-                {
-                    ++bytes_written;
-                    bit = 7;
-                }
-            }
-
-            if (row_data.size() % 8 != 0)
-                ++bytes_written;
-
-            // Write the entire row (including padding) in one call.
-            file.write(row_buf.data(), bytes_per_row);
+            file.write(reinterpret_cast<const char*>(bitdata_.data() + row * stride),
+                       static_cast<std::streamsize>(stride));
         }
     }
     file.close();
@@ -342,40 +280,87 @@ signed char Bitmap::save(std::string filename) const
 
 bool Bitmap::isImage() const
 {
-    const size_t height = pixels.size();
-
-    if (height == 0 || pixels[0].size() == 0)
-    {
-        return false;
-    }
-
-    const size_t width = pixels[0].size();
-
-    for (size_t row = 0; row < height; row++)
-    {
-        if (pixels[row].size() != width)
-            return false;
-    }
-    return true;
+    return width_ > 0 && height_ > 0;
 }
 
 
 PixelMatrix Bitmap::toPixelMatrix() const
 {
-    if( isImage() )
-    {
-        return pixels;
-    }   
-    else
-    {
+    if( !isImage() )
         return PixelMatrix();
-    }   
+
+    size_t stride = static_cast<size_t>(((width_ + 31) / 32) * 4);
+    PixelMatrix result(height_);
+
+    for (uint32_t row = 0; row < height_; ++row)
+    {
+        const uint8_t* row_ptr = bitdata_.data() + row * stride;
+        std::vector<Pixel>& row_pixels = result[row];
+        row_pixels.resize(width_);
+        uint32_t px = 0;
+
+        for (uint32_t col = 0; col < width_ / 8; ++col)
+        {
+            for (int bit = 7; bit >= 0; --bit)
+            {
+                row_pixels[px++] = Pixel((row_ptr[col] & (1 << bit)) != 0);
+            }
+        }
+
+        for (uint32_t rev_bit = 0; rev_bit < width_ % 8; ++rev_bit)
+        {
+            row_pixels[px++] = Pixel((row_ptr[width_ / 8]
+                & (1 << (7 - rev_bit))) != 0);
+        }
+    }
+
+    return result;
 }
 
 
 void Bitmap::fromPixelMatrix(const PixelMatrix & values)
 {
-    pixels = values;
+    if (values.empty() || values[0].empty())
+    {
+        width_ = 0;
+        height_ = 0;
+        bitdata_.clear();
+        return;
+    }
+
+    uint32_t w = static_cast<uint32_t>(values[0].size());
+    uint32_t h = static_cast<uint32_t>(values.size());
+    size_t stride = static_cast<size_t>(((w + 31) / 32) * 4);
+
+    bitdata_.assign(stride * h, 0);
+
+    for (uint32_t row = 0; row < h; ++row)
+    {
+        uint8_t* row_ptr = bitdata_.data() + row * stride;
+        const std::vector<Pixel>& row_data = values[row];
+
+        int bytes_written = 0;
+        int bit = 7;
+
+        for (size_t col = 0; col < row_data.size(); ++col)
+        {
+            if (row_data[col].on)
+                row_ptr[bytes_written] |= static_cast<uint8_t>(1 << bit);
+
+            if (bit > 0)
+            {
+                --bit;
+            }
+            else
+            {
+                ++bytes_written;
+                bit = 7;
+            }
+        }
+    }
+
+    width_ = w;
+    height_ = h;
 }
 
 #endif //BITMAP_CPP_
